@@ -7,7 +7,7 @@ interface Todo {
   createdAt: string;
 }
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:4000/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
 const APP_NAME = process.env.REACT_APP_NAME || 'Todo SaaS';
 const APP_DESCRIPTION = process.env.REACT_APP_DESCRIPTION || 'Simple, clean, and efficient task management';
 
