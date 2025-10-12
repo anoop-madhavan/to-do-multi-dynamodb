@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: todo-backend
+    ports:
+      - "${BACKEND_PORT:-4000}:4000"
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - PORT=4000
+      - APP_NAME=${APP_NAME}
+      - APP_DESCRIPTION=${APP_DESCRIPTION}
+    networks:
+      - todo-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - REACT_APP_NAME=${APP_NAME:-Todo SaaS}
+        - REACT_APP_DESCRIPTION=${APP_DESCRIPTION:-Simple, clean, and efficient task management}
+        - REACT_APP_API_URL=${REACT_APP_API_URL:-http://localhost:4000/api}
+    container_name: todo-frontend
+    ports:
+      - "${FRONTEND_PORT:-3700}:3000"
+    depends_on:
+      - backend
+    networks:
+      - todo-network
+    restart: unless-stopped
+
+networks:
+  todo-network:
+    driver: bridge
