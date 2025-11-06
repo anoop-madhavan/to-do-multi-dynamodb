@@ -15,7 +15,7 @@ COPY . .
 # Set build-time environment variables
 ARG REACT_APP_NAME=Todo SaaS
 ARG REACT_APP_DESCRIPTION=Simple, clean, and efficient task management
-ARG REACT_APP_API_URL=http://localhost:4000/api
+ARG REACT_APP_API_URL=/api
 
 # Set environment variables for build
 ENV REACT_APP_NAME=$REACT_APP_NAME
