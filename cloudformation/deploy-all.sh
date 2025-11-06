@@ -247,8 +247,8 @@ else
             ParameterKey=BackendPort,ParameterValue=4000 \
             ParameterKey=TaskCPU,ParameterValue=256 \
             ParameterKey=TaskMemory,ParameterValue=512 \
-            ParameterKey=AppNameEnv,ParameterValue="Todo SaaS" \
-            ParameterKey=AppDescriptionEnv,ParameterValue="Simple, clean, and efficient task management" \
+            ParameterKey=AppNameEnv,ParameterValue='Todo SaaS' \
+            ParameterKey=AppDescriptionEnv,ParameterValue='Simple, clean, and efficient task management' \
         --capabilities CAPABILITY_NAMED_IAM \
         --region $REGION
     
