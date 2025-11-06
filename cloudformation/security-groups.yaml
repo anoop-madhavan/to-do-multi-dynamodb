@@ -1,0 +1,160 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Security Groups for ALB and ECS for Todo App
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    Description: Environment name (dev, staging, prod)
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+
+  AppName:
+    Type: String
+    Default: todo-app
+    Description: Application name
+    AllowedPattern: "^[a-z0-9-]+$"
+    ConstraintDescription: Must contain only lowercase letters, numbers, and hyphens
+
+  BackendPort:
+    Type: Number
+    Default: 4000
+    Description: Backend API port number
+    MinValue: 1024
+    MaxValue: 65535
+
+  FrontendPort:
+    Type: Number
+    Default: 3000
+    Description: Frontend port number
+    MinValue: 1024
+    MaxValue: 65535
+
+Resources:
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub 'ALB security group for ${AppName}'
+      GroupName: !Sub '${Environment}-${AppName}-alb-sg'
+      VpcId: 
+        Fn::ImportValue: !Sub '${Environment}-shared-vpc-id'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: Allow HTTP from internet
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: Allow HTTPS from internet
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-${AppName}-alb-sg'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: !Ref AppName
+
+  BackendSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub 'Backend ECS tasks security group for ${AppName}'
+      GroupName: !Sub '${Environment}-${AppName}-backend-sg'
+      VpcId: 
+        Fn::ImportValue: !Sub '${Environment}-shared-vpc-id'
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-${AppName}-backend-sg'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: !Ref AppName
+
+  FrontendSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub 'Frontend ECS tasks security group for ${AppName}'
+      GroupName: !Sub '${Environment}-${AppName}-frontend-sg'
+      VpcId: 
+        Fn::ImportValue: !Sub '${Environment}-shared-vpc-id'
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-${AppName}-frontend-sg'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: !Ref AppName
+
+  # Add ingress rules separately to avoid circular dependency
+  BackendSecurityGroupIngressFromALB:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref BackendSecurityGroup
+      IpProtocol: tcp
+      FromPort: !Ref BackendPort
+      ToPort: !Ref BackendPort
+      SourceSecurityGroupId: !Ref ALBSecurityGroup
+      Description: !Sub 'Allow traffic from ALB on port ${BackendPort}'
+
+  FrontendSecurityGroupIngressFromALB:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref FrontendSecurityGroup
+      IpProtocol: tcp
+      FromPort: !Ref FrontendPort
+      ToPort: !Ref FrontendPort
+      SourceSecurityGroupId: !Ref ALBSecurityGroup
+      Description: !Sub 'Allow traffic from ALB on port ${FrontendPort}'
+
+  # Add egress rules separately to avoid circular dependency
+  ALBToBackendOutboundRule:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref ALBSecurityGroup
+      IpProtocol: tcp
+      FromPort: !Ref BackendPort
+      ToPort: !Ref BackendPort
+      DestinationSecurityGroupId: !Ref BackendSecurityGroup
+      Description: !Sub 'Allow outbound to Backend on port ${BackendPort}'
+
+  ALBToFrontendOutboundRule:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref ALBSecurityGroup
+      IpProtocol: tcp
+      FromPort: !Ref FrontendPort
+      ToPort: !Ref FrontendPort
+      DestinationSecurityGroupId: !Ref FrontendSecurityGroup
+      Description: !Sub 'Allow outbound to Frontend on port ${FrontendPort}'
+
+Outputs:
+  ALBSecurityGroupId:
+    Description: ALB Security Group ID
+    Value: !Ref ALBSecurityGroup
+    Export:
+      Name: !Sub '${Environment}-${AppName}-alb-sg-id'
+
+  BackendSecurityGroupId:
+    Description: Backend Security Group ID
+    Value: !Ref BackendSecurityGroup
+    Export:
+      Name: !Sub '${Environment}-${AppName}-backend-sg-id'
+
+  FrontendSecurityGroupId:
+    Description: Frontend Security Group ID
+    Value: !Ref FrontendSecurityGroup
+    Export:
+      Name: !Sub '${Environment}-${AppName}-frontend-sg-id'
+

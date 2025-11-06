@@ -1,0 +1,119 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: ECS Cluster for Todo App Fargate tasks
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    Description: Environment name (dev, staging, prod)
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+
+  AppName:
+    Type: String
+    Default: todo-app
+    Description: Application name
+    AllowedPattern: "^[a-z0-9-]+$"
+    ConstraintDescription: Must contain only lowercase letters, numbers, and hyphens
+
+  EnableContainerInsights:
+    Type: String
+    Default: enabled
+    Description: Enable CloudWatch Container Insights
+    AllowedValues:
+      - enabled
+      - disabled
+
+Resources:
+  # ECS Cluster
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${Environment}-${AppName}-cluster'
+      CapacityProviders:
+        - FARGATE
+        - FARGATE_SPOT
+      DefaultCapacityProviderStrategy:
+        - CapacityProvider: FARGATE
+          Weight: 1
+          Base: 1
+        - CapacityProvider: FARGATE_SPOT
+          Weight: 0
+      ClusterSettings:
+        - Name: containerInsights
+          Value: !Ref EnableContainerInsights
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-${AppName}-cluster'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: !Ref AppName
+
+  # CloudWatch Log Group for Backend
+  BackendLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${Environment}-${AppName}-backend'
+      RetentionInDays: 7
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-${AppName}-backend-logs'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: !Ref AppName
+
+  # CloudWatch Log Group for Frontend
+  FrontendLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${Environment}-${AppName}-frontend'
+      RetentionInDays: 7
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-${AppName}-frontend-logs'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: !Ref AppName
+
+Outputs:
+  ClusterName:
+    Description: Name of the ECS Cluster
+    Value: !Ref ECSCluster
+    Export:
+      Name: !Sub '${Environment}-${AppName}-cluster-name'
+
+  ClusterArn:
+    Description: ARN of the ECS Cluster
+    Value: !GetAtt ECSCluster.Arn
+    Export:
+      Name: !Sub '${Environment}-${AppName}-cluster-arn'
+
+  BackendLogGroupName:
+    Description: Backend CloudWatch Log Group Name
+    Value: !Ref BackendLogGroup
+    Export:
+      Name: !Sub '${Environment}-${AppName}-backend-log-group-name'
+
+  BackendLogGroupArn:
+    Description: Backend CloudWatch Log Group ARN
+    Value: !GetAtt BackendLogGroup.Arn
+    Export:
+      Name: !Sub '${Environment}-${AppName}-backend-log-group-arn'
+
+  FrontendLogGroupName:
+    Description: Frontend CloudWatch Log Group Name
+    Value: !Ref FrontendLogGroup
+    Export:
+      Name: !Sub '${Environment}-${AppName}-frontend-log-group-name'
+
+  FrontendLogGroupArn:
+    Description: Frontend CloudWatch Log Group ARN
+    Value: !GetAtt FrontendLogGroup.Arn
+    Export:
+      Name: !Sub '${Environment}-${AppName}-frontend-log-group-arn'
+

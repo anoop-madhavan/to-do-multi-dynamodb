@@ -1,0 +1,137 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: ECS Service with Auto Scaling for Todo Frontend
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    Description: Environment name (dev, staging, prod)
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+
+  AppName:
+    Type: String
+    Default: todo-app
+    Description: Application name
+    AllowedPattern: "^[a-z0-9-]+$"
+
+  DesiredCount:
+    Type: Number
+    Default: 2
+    Description: Desired number of tasks
+    MinValue: 1
+    MaxValue: 10
+
+  MinTasks:
+    Type: Number
+    Default: 1
+    Description: Minimum number of tasks for auto scaling
+    MinValue: 1
+
+  MaxTasks:
+    Type: Number
+    Default: 4
+    Description: Maximum number of tasks for auto scaling
+    MinValue: 1
+
+  TargetCPUUtilization:
+    Type: Number
+    Default: 70
+    Description: Target CPU utilization percentage for auto scaling
+    MinValue: 1
+    MaxValue: 100
+
+  HealthCheckGracePeriod:
+    Type: Number
+    Default: 60
+    Description: Health check grace period in seconds
+    MinValue: 0
+    MaxValue: 2147483647
+
+  FrontendPort:
+    Type: Number
+    Default: 3000
+    Description: Frontend port number
+
+Resources:
+  # ECS Service
+  ECSService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub '${Environment}-${AppName}-frontend-service'
+      Cluster:
+        Fn::ImportValue: !Sub '${Environment}-${AppName}-cluster-name'
+      TaskDefinition:
+        Fn::ImportValue: !Sub '${Environment}-${AppName}-frontend-task-definition-arn'
+      DesiredCount: !Ref DesiredCount
+      LaunchType: FARGATE
+      PlatformVersion: LATEST
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          Subnets:
+            - Fn::ImportValue: !Sub '${Environment}-shared-private-subnet-1-id'
+            - Fn::ImportValue: !Sub '${Environment}-shared-private-subnet-2-id'
+          SecurityGroups:
+            - Fn::ImportValue: !Sub '${Environment}-${AppName}-frontend-sg-id'
+      LoadBalancers:
+        - ContainerName: frontend-container
+          ContainerPort: !Ref FrontendPort
+          TargetGroupArn:
+            Fn::ImportValue: !Sub '${Environment}-${AppName}-frontend-tg-arn'
+      HealthCheckGracePeriodSeconds: !Ref HealthCheckGracePeriod
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-${AppName}-frontend-service'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: !Ref AppName
+
+  # Auto Scaling Target
+  ServiceScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: !Ref MaxTasks
+      MinCapacity: !Ref MinTasks
+      ResourceId: !Sub 'service/${Environment}-${AppName}-cluster/${Environment}-${AppName}-frontend-service'
+      RoleARN: !Sub 'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService'
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+    DependsOn: ECSService
+
+  # Auto Scaling Policy - CPU Based
+  ServiceScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${Environment}-${AppName}-frontend-cpu-scaling-policy'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ServiceScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        TargetValue: !Ref TargetCPUUtilization
+        ScaleInCooldown: 300
+        ScaleOutCooldown: 60
+
+Outputs:
+  ServiceName:
+    Description: Name of the Frontend ECS Service
+    Value: !GetAtt ECSService.Name
+    Export:
+      Name: !Sub '${Environment}-${AppName}-frontend-service-name'
+
+  ServiceArn:
+    Description: ARN of the Frontend ECS Service
+    Value: !Ref ECSService
+    Export:
+      Name: !Sub '${Environment}-${AppName}-frontend-service-arn'
+

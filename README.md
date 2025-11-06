@@ -133,9 +133,46 @@ to-do-multi-saas/
 └── README.md
 ```
 
+## AWS Deployment
+
+### Deploy to AWS in 15 minutes
+
+This project includes complete AWS CloudFormation templates and automation scripts for deploying to ECS Fargate.
+
+**Quick Start:**
+```bash
+cd cloudformation
+./build-and-push.sh v1.0.0 us-east-1    # Build and push Docker images
+./deploy-all.sh dev us-east-1           # Deploy all infrastructure
+```
+
+**Documentation:**
+- 📘 **[QUICK_START.md](QUICK_START.md)** - Get started in 15 minutes
+- 📗 **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** - Complete deployment guide
+- 📕 **[cloudformation/README.md](cloudformation/README.md)** - Template documentation
+
+**What's Deployed:**
+- ✅ VPC with public/private subnets across 2 AZs
+- ✅ Application Load Balancer with path-based routing
+- ✅ ECS Fargate cluster with auto-scaling
+- ✅ Backend service (API) in private subnets
+- ✅ Frontend service (UI) in private subnets
+- ✅ ECR repository for Docker images
+- ✅ CloudWatch logs for monitoring
+- ✅ Security groups with least privilege access
+
+**Cost:** ~$110/month for dev environment (can be reduced by stopping when not in use)
+
+**Cleanup:**
+```bash
+cd cloudformation
+./cleanup-all.sh dev us-east-1
+```
+
 ## Notes
 
 - Todos are stored in-memory and will be lost when the backend container restarts
 - The frontend proxies API requests to the backend through Nginx
 - CORS is properly configured for cross-origin requests
 - The application is production-ready for learning deployment scenarios
+- AWS deployment includes auto-scaling, load balancing, and high availability

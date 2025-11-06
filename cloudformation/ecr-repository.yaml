@@ -1,0 +1,152 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: ECR Repository for Todo App container images
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    Description: Environment name (dev, staging, prod)
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+
+  AppName:
+    Type: String
+    Default: todo-app
+    Description: Application name
+    AllowedPattern: "^[a-z0-9-]+$"
+    ConstraintDescription: Must contain only lowercase letters, numbers, and hyphens
+
+  ImageTagMutability:
+    Type: String
+    Default: MUTABLE
+    Description: Image tag mutability setting
+    AllowedValues:
+      - MUTABLE
+      - IMMUTABLE
+
+  ScanOnPush:
+    Type: String
+    Default: enabled
+    Description: Enable image scanning on push
+    AllowedValues:
+      - enabled
+      - disabled
+
+  LifecyclePolicyEnabled:
+    Type: String
+    Default: enabled
+    Description: Enable lifecycle policy to clean up old images
+    AllowedValues:
+      - enabled
+      - disabled
+
+  MaxImageCount:
+    Type: Number
+    Default: 10
+    Description: Maximum number of images to retain
+    MinValue: 1
+    MaxValue: 100
+
+Conditions:
+  EnableLifecyclePolicy: !Equals [!Ref LifecyclePolicyEnabled, enabled]
+  EnableImageScanning: !Equals [!Ref ScanOnPush, enabled]
+
+Resources:
+  # ECR Repository
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref AppName
+      ImageTagMutability: !Ref ImageTagMutability
+      ImageScanningConfiguration:
+        ScanOnPush: !If [EnableImageScanning, true, false]
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      LifecyclePolicy:
+        !If
+          - EnableLifecyclePolicy
+          - LifecyclePolicyText: !Sub |
+              {
+                "rules": [
+                  {
+                    "rulePriority": 1,
+                    "description": "Keep last ${MaxImageCount} images",
+                    "selection": {
+                      "tagStatus": "any",
+                      "countType": "imageCountMoreThan",
+                      "countNumber": ${MaxImageCount}
+                    },
+                    "action": {
+                      "type": "expire"
+                    }
+                  }
+                ]
+              }
+          - !Ref AWS::NoValue
+      RepositoryPolicyText:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowPushPull
+            Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+                - codebuild.amazonaws.com
+            Action:
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchGetImage
+              - ecr:BatchCheckLayerAvailability
+              - ecr:PutImage
+              - ecr:InitiateLayerUpload
+              - ecr:UploadLayerPart
+              - ecr:CompleteLayerUpload
+              - ecr:DescribeRepositories
+              - ecr:GetRepositoryPolicy
+              - ecr:ListImages
+              - ecr:DescribeImages
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-${AppName}-ecr'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: !Ref AppName
+
+Outputs:
+  RepositoryName:
+    Description: ECR Repository Name
+    Value: !Ref ECRRepository
+    Export:
+      Name: !Sub '${Environment}-${AppName}-ecr-repo-name'
+
+  RepositoryArn:
+    Description: ECR Repository ARN
+    Value: !GetAtt ECRRepository.Arn
+    Export:
+      Name: !Sub '${Environment}-${AppName}-ecr-repo-arn'
+
+  RepositoryUri:
+    Description: ECR Repository URI
+    Value: !GetAtt ECRRepository.RepositoryUri
+    Export:
+      Name: !Sub '${Environment}-${AppName}-ecr-repo-uri'
+
+  RepositoryRegistryId:
+    Description: ECR Registry ID (AWS Account ID)
+    Value: !Sub '${AWS::AccountId}'
+    Export:
+      Name: !Sub '${Environment}-${AppName}-ecr-registry-id'
+
+  DockerLoginCommand:
+    Description: Docker login command for this registry
+    Value: !Sub 'aws ecr get-login-password --region ${AWS::Region} | docker login --username AWS --password-stdin ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com'
+
+  DockerBuildPushCommands:
+    Description: Example commands to build and push image
+    Value: !Sub |
+      docker build -t ${AppName}:latest .
+      docker tag ${AppName}:latest ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${AppName}:latest
+      docker push ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${AppName}:latest
+

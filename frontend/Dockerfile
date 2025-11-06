@@ -28,14 +28,20 @@ RUN npm run build
 # Production stage
 FROM nginx:alpine
 
+# Install gettext for envsubst
+RUN apk add --no-cache gettext
+
 # Copy built app from build stage
 COPY --from=build /app/build /usr/share/nginx/html
 
-# Copy nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Copy nginx configuration template
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+
+# Set default backend URL for Docker Compose (can be overridden via env var)
+ENV BACKEND_URL=backend
 
 # Expose port
 EXPOSE 3000
 
-# Start nginx
+# Start nginx (envsubst will process the template automatically)
 CMD ["nginx", "-g", "daemon off;"]

@@ -1,0 +1,227 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: ECS Task Definition and IAM Roles for Todo Backend
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    Description: Environment name (dev, staging, prod)
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+
+  AppName:
+    Type: String
+    Default: todo-app
+    Description: Application name
+    AllowedPattern: "^[a-z0-9-]+$"
+
+  ECRImageURI:
+    Type: String
+    Description: Full ECR image URI for backend (e.g., 123456789012.dkr.ecr.us-east-1.amazonaws.com/todo-app:backend-v1.0.0)
+    AllowedPattern: "^[0-9]+\\.dkr\\.ecr\\.[a-z0-9-]+\\.amazonaws\\.com/.+:.+$"
+
+  BackendPort:
+    Type: Number
+    Default: 4000
+    Description: Backend port number
+
+  TaskCPU:
+    Type: String
+    Default: '256'
+    Description: Task CPU units (256 = 0.25 vCPU)
+    AllowedValues:
+      - '256'
+      - '512'
+      - '1024'
+      - '2048'
+      - '4096'
+
+  TaskMemory:
+    Type: String
+    Default: '512'
+    Description: Task memory in MB
+    AllowedValues:
+      - '512'
+      - '1024'
+      - '2048'
+      - '3072'
+      - '4096'
+      - '5120'
+      - '6144'
+      - '7168'
+      - '8192'
+
+  AppNameEnv:
+    Type: String
+    Default: 'Todo SaaS'
+    Description: Application name for display
+
+  AppDescriptionEnv:
+    Type: String
+    Default: 'Simple, clean, and efficient task management'
+    Description: Application description
+
+Resources:
+  # Task Execution Role (for ECS to pull images, write logs)
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${Environment}-${AppName}-backend-exec-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ECRAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                Resource: '*'
+        - PolicyName: CloudWatchLogsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  Fn::ImportValue: !Sub '${Environment}-${AppName}-backend-log-group-arn'
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-${AppName}-backend-exec-role'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: !Ref AppName
+
+  # Task Role (for application to access AWS services)
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${Environment}-${AppName}-backend-task-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ApplicationPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+              # Add DynamoDB permissions when needed
+              # - Effect: Allow
+              #   Action:
+              #     - dynamodb:GetItem
+              #     - dynamodb:PutItem
+              #     - dynamodb:UpdateItem
+              #     - dynamodb:DeleteItem
+              #     - dynamodb:Query
+              #     - dynamodb:Scan
+              #   Resource: arn:aws:dynamodb:*:*:table/todo-*
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-${AppName}-backend-task-role'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: !Ref AppName
+
+  # ECS Task Definition
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${Environment}-${AppName}-backend'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: !Ref TaskCPU
+      Memory: !Ref TaskMemory
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: backend-container
+          Image: !Ref ECRImageURI
+          Essential: true
+          PortMappings:
+            - ContainerPort: !Ref BackendPort
+              Protocol: tcp
+          Environment:
+            - Name: NODE_ENV
+              Value: production
+            - Name: PORT
+              Value: !Ref BackendPort
+            - Name: APP_NAME
+              Value: !Ref AppNameEnv
+            - Name: APP_DESCRIPTION
+              Value: !Ref AppDescriptionEnv
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group:
+                Fn::ImportValue: !Sub '${Environment}-${AppName}-backend-log-group-name'
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - !Sub 'nc -z localhost ${BackendPort} || exit 1'
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-${AppName}-backend-task'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: !Ref AppName
+
+Outputs:
+  TaskDefinitionArn:
+    Description: ARN of the Backend Task Definition
+    Value: !Ref TaskDefinition
+    Export:
+      Name: !Sub '${Environment}-${AppName}-backend-task-definition-arn'
+
+  TaskExecutionRoleArn:
+    Description: ARN of the Task Execution Role
+    Value: !GetAtt TaskExecutionRole.Arn
+    Export:
+      Name: !Sub '${Environment}-${AppName}-backend-task-execution-role-arn'
+
+  TaskRoleArn:
+    Description: ARN of the Task Role
+    Value: !GetAtt TaskRole.Arn
+    Export:
+      Name: !Sub '${Environment}-${AppName}-backend-task-role-arn'
+
+  TaskDefinitionFamily:
+    Description: Task Definition Family
+    Value: !Sub '${Environment}-${AppName}-backend'
+    Export:
+      Name: !Sub '${Environment}-${AppName}-backend-task-family'
+

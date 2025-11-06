@@ -1,0 +1,201 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: ECS Task Definition and IAM Roles for Todo Frontend
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    Description: Environment name (dev, staging, prod)
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+
+  AppName:
+    Type: String
+    Default: todo-app
+    Description: Application name
+    AllowedPattern: "^[a-z0-9-]+$"
+
+  ECRImageURI:
+    Type: String
+    Description: Full ECR image URI for frontend (e.g., 123456789012.dkr.ecr.us-east-1.amazonaws.com/todo-app:frontend-v1.0.0)
+    AllowedPattern: "^[0-9]+\\.dkr\\.ecr\\.[a-z0-9-]+\\.amazonaws\\.com/.+:.+$"
+
+  FrontendPort:
+    Type: Number
+    Default: 3000
+    Description: Frontend port number
+
+  TaskCPU:
+    Type: String
+    Default: '256'
+    Description: Task CPU units (256 = 0.25 vCPU)
+    AllowedValues:
+      - '256'
+      - '512'
+      - '1024'
+      - '2048'
+      - '4096'
+
+  TaskMemory:
+    Type: String
+    Default: '512'
+    Description: Task memory in MB
+    AllowedValues:
+      - '512'
+      - '1024'
+      - '2048'
+      - '3072'
+      - '4096'
+      - '5120'
+      - '6144'
+      - '7168'
+      - '8192'
+
+Resources:
+  # Task Execution Role (for ECS to pull images, write logs)
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${Environment}-${AppName}-frontend-exec-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ECRAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                Resource: '*'
+        - PolicyName: CloudWatchLogsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  Fn::ImportValue: !Sub '${Environment}-${AppName}-frontend-log-group-arn'
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-${AppName}-frontend-exec-role'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: !Ref AppName
+
+  # Task Role (for application to access AWS services)
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${Environment}-${AppName}-frontend-task-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ApplicationPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-${AppName}-frontend-task-role'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: !Ref AppName
+
+  # ECS Task Definition
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${Environment}-${AppName}-frontend'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: !Ref TaskCPU
+      Memory: !Ref TaskMemory
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: frontend-container
+          Image: !Ref ECRImageURI
+          Essential: true
+          PortMappings:
+            - ContainerPort: !Ref FrontendPort
+              Protocol: tcp
+          Environment:
+            - Name: NODE_ENV
+              Value: production
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group:
+                Fn::ImportValue: !Sub '${Environment}-${AppName}-frontend-log-group-name'
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - !Sub 'nc -z localhost ${FrontendPort} || exit 1'
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-${AppName}-frontend-task'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: !Ref AppName
+
+Outputs:
+  TaskDefinitionArn:
+    Description: ARN of the Frontend Task Definition
+    Value: !Ref TaskDefinition
+    Export:
+      Name: !Sub '${Environment}-${AppName}-frontend-task-definition-arn'
+
+  TaskExecutionRoleArn:
+    Description: ARN of the Task Execution Role
+    Value: !GetAtt TaskExecutionRole.Arn
+    Export:
+      Name: !Sub '${Environment}-${AppName}-frontend-task-execution-role-arn'
+
+  TaskRoleArn:
+    Description: ARN of the Task Role
+    Value: !GetAtt TaskRole.Arn
+    Export:
+      Name: !Sub '${Environment}-${AppName}-frontend-task-role-arn'
+
+  TaskDefinitionFamily:
+    Description: Task Definition Family
+    Value: !Sub '${Environment}-${AppName}-frontend'
+    Export:
+      Name: !Sub '${Environment}-${AppName}-frontend-task-family'
+
