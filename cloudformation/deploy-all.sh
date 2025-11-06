@@ -18,6 +18,17 @@ ENVIRONMENT=${1:-dev}
 REGION=${2:-us-east-1}
 APP_NAME="todo-app"
 
+# Load environment variables from .env file if it exists
+if [ -f "../.env" ]; then
+    print_info "Loading environment variables from .env file..."
+    export $(grep -v '^#' ../.env | xargs)
+    print_success "Environment variables loaded"
+fi
+
+# Set defaults if not provided in .env
+APP_NAME_ENV=${APP_NAME:-"Todo SaaS"}
+APP_DESCRIPTION_ENV=${APP_DESCRIPTION:-"Simple, clean, and efficient task management"}
+
 # Validate environment
 if [[ ! "$ENVIRONMENT" =~ ^(dev|staging|prod)$ ]]; then
     echo -e "${RED}Error: Environment must be dev, staging, or prod${NC}"
@@ -247,8 +258,8 @@ else
             ParameterKey=BackendPort,ParameterValue=4000 \
             ParameterKey=TaskCPU,ParameterValue=256 \
             ParameterKey=TaskMemory,ParameterValue=512 \
-            ParameterKey=AppNameEnv,ParameterValue='Todo SaaS' \
-            ParameterKey=AppDescriptionEnv,ParameterValue='Simple, clean, and efficient task management' \
+            ParameterKey=AppNameEnv,ParameterValue="${APP_NAME_ENV}" \
+            ParameterKey=AppDescriptionEnv,ParameterValue="${APP_DESCRIPTION_ENV}" \
         --capabilities CAPABILITY_NAMED_IAM \
         --region $REGION
     

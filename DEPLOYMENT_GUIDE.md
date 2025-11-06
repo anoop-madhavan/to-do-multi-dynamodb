@@ -9,6 +9,22 @@ This guide provides step-by-step instructions to deploy the Todo App infrastruct
 - Appropriate AWS credentials with permissions to create resources
 - Your application code ready to be containerized
 
+## Environment Variables
+
+The deployment scripts automatically read from your `.env` file if it exists in the project root.
+
+**Create a `.env` file:**
+```bash
+cp env.example .env
+# Edit .env with your values
+```
+
+**Supported variables:**
+- `APP_NAME` - Application name (default: "Todo SaaS")
+- `APP_DESCRIPTION` - Application description (default: "Simple, clean, and efficient task management")
+
+These values will be passed to the ECS task definitions automatically during deployment.
+
 ## Deployment Order
 
 The stacks must be deployed in the following order due to dependencies:
